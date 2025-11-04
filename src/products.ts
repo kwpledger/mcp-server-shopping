@@ -1,10 +1,12 @@
 import * as cheerio from 'cheerio'
 import fs from 'fs'
 import puppeteer from 'puppeteer'
+import { fileURLToPath } from 'url'
+import { dirname } from 'path'
 import { USE_MOCKS, EXPORT_LIVE_SCRAPING_FOR_MOCKS, getAmazonDomain } from './config.js'
 import { createBrowserAndPage, getTimestamp, throwIfNotLoggedIn } from './utils.js'
 
-const __dirname = new URL('.', import.meta.url).pathname
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
 // ##################################
 // Product Details

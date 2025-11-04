@@ -1,0 +1,15 @@
+[
+  {
+    "domain": ".target.com",
+    "expirationDate": 1767225600,
+    "hostOnly": false,
+    "httpOnly": false,
+    "name": "example_cookie",
+    "path": "/",
+    "sameSite": "Lax",
+    "secure": true,
+    "session": false,
+    "storeId": null,
+    "value": "REPLACE_WITH_YOUR_COOKIES"
+  }
+]

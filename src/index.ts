@@ -4,49 +4,91 @@ import { z } from 'zod'
 import { getOrdersHistory } from './orders.js'
 import { getCartContent, addToCart, clearCart } from './cart.js'
 import { getProductDetails, searchProducts } from './products.js'
+import { getAllTargetOrders } from './target-orders.js'
 
 // Create server instance
 const server = new McpServer({
-  name: 'amazon',
+  name: 'shopping',
   version: '1.0.0',
 })
 
-server.tool('get-orders-history', 'Get orders history for a user', {}, async ({}) => {
-  let ordersHistory: Awaited<ReturnType<typeof getOrdersHistory>>
-  try {
-    ordersHistory = await getOrdersHistory()
-  } catch (error: any) {
-    console.error('[ERROR][get-orders-history] Error in get-orders-history tool:', error)
+server.tool(
+  'get-orders-history',
+  'Get orders history for a user. Optionally filter by year (e.g., 2025, 2024). Set onlyUnreturned to true to exclude returned/refunded items.',
+  {
+    year: z
+      .number()
+      .int()
+      .min(2000)
+      .max(2100)
+      .optional()
+      .describe('Optional year to filter orders (e.g., 2025, 2024, 2023). If not provided, returns recent orders.'),
+    onlyUnreturned: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe('If true, only shows orders/items that were NOT returned or refunded. Default is false (shows all orders).'),
+  },
+  async ({ year, onlyUnreturned }) => {
+    let ordersHistory: Awaited<ReturnType<typeof getOrdersHistory>>
+    try {
+      ordersHistory = await getOrdersHistory(year)
+    } catch (error: any) {
+      console.error('[ERROR][get-orders-history] Error in get-orders-history tool:', error)
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `An error occurred while retrieving orders history. Error: ${error.message}`,
+          },
+        ],
+      }
+    }
+
+    if (!ordersHistory || ordersHistory.length === 0) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: year ? `No orders found for year ${year}.` : 'No orders found.',
+          },
+        ],
+      }
+    }
+
+    // Optimize the data by keeping only essential fields for analysis
+    let optimizedOrders = ordersHistory.map(order => {
+      const isReturned = order.orderInfo.status.toLowerCase().includes('refund') || 
+                         order.orderInfo.status.toLowerCase().includes('return')
+      
+      return {
+        orderDate: order.orderInfo.orderDate,
+        total: order.orderInfo.total,
+        status: order.orderInfo.status,
+        isReturned: isReturned,
+        items: order.items.map((item: any) => ({
+          title: item.title,
+          asin: item.asin,
+          returnEligible: item.returnEligible
+        }))
+      }
+    })
+
+    // Filter out returned orders if requested
+    if (onlyUnreturned) {
+      optimizedOrders = optimizedOrders.filter(order => !order.isReturned)
+    }
+
     return {
       content: [
         {
           type: 'text',
-          text: `An error occurred while retrieving orders history. Error: ${error.message}`,
+          text: JSON.stringify(optimizedOrders, null, 2),
         },
       ],
     }
   }
-
-  if (!ordersHistory || ordersHistory.length === 0) {
-    return {
-      content: [
-        {
-          type: 'text',
-          text: 'No orders found.',
-        },
-      ],
-    }
-  }
-
-  return {
-    content: [
-      {
-        type: 'text',
-        text: JSON.stringify(ordersHistory, null, 2),
-      },
-    ],
-  }
-})
+)
 
 server.tool(
   'get-cart-content',
@@ -268,11 +310,101 @@ server.tool(
   }
 )
 
+// ============================================================================
+// TARGET TOOLS
+// ============================================================================
+
+server.tool(
+  'get-target-orders-history',
+  'Get order history from Target.com. Optionally filter by year (e.g., 2025, 2024) and order type (online, instore, or both). Returns orders with essential details: order number, date, total, and items.',
+  {
+    year: z.number().int().min(2000).max(2100).optional().describe('Optional year to filter orders (e.g., 2025, 2024, 2023). If not provided, returns all recent orders.'),
+    orderType: z.enum(['online', 'instore', 'both']).optional().default('both').describe('Type of orders to fetch: "online" for online orders, "instore" for in-store orders, or "both" (default) for all orders.'),
+  },
+  async ({ year, orderType = 'both' }) => {
+    try {
+      console.error(`[INFO] Fetching Target ${orderType} order history${year ? ` for year ${year}` : ''}...`)
+      const allOrders = await getAllTargetOrders(orderType)
+
+      if (!allOrders || allOrders.length === 0) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'No Target orders found.',
+            },
+          ],
+        }
+      }
+
+      // Filter by year if specified
+      let orders = allOrders
+      if (year) {
+        orders = allOrders.filter(order => {
+          if (!order.placed_date) return false
+          const orderYear = new Date(order.placed_date).getFullYear()
+          return orderYear === year
+        })
+        console.error(`[INFO] Filtered to ${orders.length} orders for year ${year}`)
+      }
+
+      if (orders.length === 0) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: year ? `No Target orders found for year ${year}.` : 'No Target orders found.',
+            },
+          ],
+        }
+      }
+
+      // Deduplicate orders by order number (Target API sometimes returns duplicates)
+      const uniqueOrders = Array.from(
+        new Map(orders.map(order => [order.order_number, order])).values()
+      )
+      
+      console.error(`[INFO] Deduplicated ${orders.length} orders down to ${uniqueOrders.length} unique orders`)
+
+      // Optimize the data structure - only keep essential fields
+      const optimizedOrders = uniqueOrders.map(order => ({
+        orderNumber: order.order_number || 'N/A',
+        orderDate: order.placed_date || 'N/A',
+        total: order.summary?.grand_total || 'N/A',
+        orderType: order.order_number?.startsWith('9') ? 'online' : order.order_number?.startsWith('1') ? 'instore' : 'unknown',
+        items: (order.order_lines || []).map(line => ({
+          description: line.item?.description || 'N/A',
+          quantity: line.original_quantity || 0,
+        })),
+      }))
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(optimizedOrders, null, 2),
+          },
+        ],
+      }
+    } catch (error: any) {
+      console.error('[ERROR][get-target-orders-history] Error:', error)
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `An error occurred while retrieving Target orders. Error: ${error.message}\n\nMake sure you have exported your Target cookies to targetCookies.json`,
+          },
+        ],
+      }
+    }
+  }
+)
+
 // Start the server
 async function main() {
   const transport = new StdioServerTransport()
   await server.connect(transport)
-  console.error('[INFO] Amazon MCP Server running on stdio')
+  console.error('[INFO] Shopping MCP Server running on stdio (Amazon + Target support)')
 }
 
 main().catch(error => {

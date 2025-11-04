@@ -214,7 +214,10 @@ build/Release
 build/
 dist/
 
+# Cookies - NEVER commit these!
 amazonCookies.json
+targetCookies.json
+
 mocks/*_202*.html
 mocks/*_202*.txt
 !mcp-server-amazon.log

@@ -1,12 +1,12 @@
 {
-  "name": "mcp-server-amazon",
+  "name": "mcp-server-shopping",
   "private": true,
-  "description": "Amazon Model Context Protocol Server",
+  "description": "Shopping Model Context Protocol Server (Amazon & Target)",
   "version": "1.0.0",
   "main": "./build/index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc && chmod -R 755 ./build",
+    "build": "tsc",
     "clean": "rm mocks/*_202*"
   },
   "files": [
