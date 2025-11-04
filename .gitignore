@@ -218,6 +218,8 @@ dist/
 amazonCookies.json
 targetCookies.json
 
+# Logs
+*.log
+
 mocks/*_202*.html
 mocks/*_202*.txt
-!mcp-server-amazon.log

@@ -60,7 +60,7 @@ The server requires Amazon cookies for authentication:
 - Useful for development and testing without hitting Amazon
 
 ### Logging
-- Server logs to `~/Library/Logs/Claude/mcp-server-amazon.log`
+- Server logs to `~/Library/Logs/Claude/mcp-server-shopping.log` (Mac) or `%APPDATA%\Claude\logs\mcp-server-shopping.log` (Windows)
 - Check logs for debugging authentication or scraping issues
 
 ## MCP Tools Exposed

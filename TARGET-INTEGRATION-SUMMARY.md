@@ -73,7 +73,7 @@ Edit: `%APPDATA%\Claude\claude_desktop_config.json`
     "shopping": {
       "command": "node",
       "args": [
-        "C:\\Users\\saparyan\\source\\repos\\mcp-server-amazon\\build\\index.js"
+        "C:\\Users\\YOUR_USERNAME\\source\\repos\\mcp-server-shopping\\build\\index.js"
       ]
     }
   }
