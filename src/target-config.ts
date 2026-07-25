@@ -9,6 +9,14 @@ export const IS_BROWSER_VISIBLE = false
 export const COOKIES_FILE_PATH = `${__dirname}/../targetCookies.json`
 
 /**
+ * Public Target web API key. This is not a secret - it is embedded in every
+ * request the target.com site makes (visible in the query string of their
+ * public API calls) and is required by Target's API gateway. Used to call the
+ * store-receipt detail endpoint (post_orders/v1/orders/{id}/store).
+ */
+export const TARGET_API_KEY = 'ff457966e64d5e877fdbad070f276d18ecec4a01'
+
+/**
  * Load Target cookies from file
  */
 export function loadTargetCookiesFile(): {
@@ -28,8 +36,12 @@ export function loadTargetCookiesFile(): {
     const cookies = JSON.parse(fs.readFileSync(COOKIES_FILE_PATH, 'utf-8'))
     console.error(`[INFO] Loaded ${cookies.length} Target cookies from ${COOKIES_FILE_PATH}`)
     return cookies
-  } catch (error) {
-    console.error(`[ERROR] Failed to load Target cookies from ${COOKIES_FILE_PATH}:`, error)
+  } catch (error: any) {
+    // Non-fatal: the server still loads. Target tools will surface an auth
+    // error at call time if cookies are missing or invalid.
+    console.error(
+      `[WARN] No usable targetCookies.json at ${COOKIES_FILE_PATH} (${error?.code || error?.message}). Target tools will be unavailable until you add it.`
+    )
     return []
   }
 }

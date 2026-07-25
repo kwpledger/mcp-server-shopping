@@ -22,12 +22,18 @@ export function loadAmazonCookiesFile() {
         sameSite: cookie.sameSite || 'Lax',
       }))
     } catch (error: any) {
-      throw new Error(`Error reading or parsing amazonCookies.json: ${error.message}`)
+      // Non-fatal: bad Amazon cookies shouldn't stop the Target tools from
+      // loading. Amazon tools will surface an auth error at call time.
+      console.error(`[WARN] Error reading or parsing amazonCookies.json: ${error.message}`)
+      return []
     }
   } else {
-    throw new Error(
-      `No amazonCookies.json file found at ${COOKIES_FILE_PATH}. Please create it by logging into Amazon and exporting your cookies.`
+    // Non-fatal: the server supports Target-only use without Amazon cookies.
+    // Only the Amazon tools require this file; they'll error at call time.
+    console.error(
+      `[WARN] No amazonCookies.json found at ${COOKIES_FILE_PATH}. Amazon tools will be unavailable; Target tools work independently.`
     )
+    return []
   }
 }
 

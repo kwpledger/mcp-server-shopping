@@ -12,6 +12,21 @@ const server = new McpServer({
   version: '1.0.0',
 })
 
+/**
+ * Decode the numeric/named HTML entities Target returns in item descriptions
+ * (e.g. "L&#39;Oreal" -> "L'Oreal") so line items read cleanly.
+ */
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+}
+
 server.tool(
   'get-orders-history',
   'Get orders history for a user. Optionally filter by year (e.g., 2025, 2024). Set onlyUnreturned to true to exclude returned/refunded items.',
@@ -316,15 +331,16 @@ server.tool(
 
 server.tool(
   'get-target-orders-history',
-  'Get order history from Target.com. Optionally filter by year (e.g., 2025, 2024) and order type (online, instore, or both). Returns orders with essential details: order number, date, total, and items.',
+  'Get order history from Target.com. Optionally filter by year (e.g., 2025, 2024) and order type (online, instore, or both). Returns orders with essential details: order number, date, total, and items. Set includeItemDetails to true to also pull the full itemized receipt for each order (per-item name, price, quantity, product category, plus subtotal/tax/discounts and payment card) - needed for building category splits that reconcile to the charged total. Note: includeItemDetails is slower as it fetches one receipt per order.',
   {
     year: z.number().int().min(2000).max(2100).optional().describe('Optional year to filter orders (e.g., 2025, 2024, 2023). If not provided, returns all recent orders.'),
     orderType: z.enum(['online', 'instore', 'both']).optional().default('both').describe('Type of orders to fetch: "online" for online orders, "instore" for in-store orders, or "both" (default) for all orders.'),
+    includeItemDetails: z.boolean().optional().default(false).describe('If true, enrich each order with its full itemized receipt: per-item price + quantity + product category, subtotal, tax, RedCard/Circle discounts, and payment card. Needed for transaction categorization. Slower - fetches one receipt per order.'),
   },
-  async ({ year, orderType = 'both' }) => {
+  async ({ year, orderType = 'both', includeItemDetails = false }) => {
     try {
-      console.error(`[INFO] Fetching Target ${orderType} order history${year ? ` for year ${year}` : ''}...`)
-      const allOrders = await getAllTargetOrders(orderType)
+      console.error(`[INFO] Fetching Target ${orderType} order history${year ? ` for year ${year}` : ''}${includeItemDetails ? ' with item details' : ''}...`)
+      const allOrders = await getAllTargetOrders(orderType, includeItemDetails)
 
       if (!allOrders || allOrders.length === 0) {
         return {
@@ -367,16 +383,54 @@ server.tool(
       console.error(`[INFO] Deduplicated ${orders.length} orders down to ${uniqueOrders.length} unique orders`)
 
       // Optimize the data structure - only keep essential fields
-      const optimizedOrders = uniqueOrders.map(order => ({
-        orderNumber: order.order_number || 'N/A',
-        orderDate: order.placed_date || 'N/A',
-        total: order.summary?.grand_total || 'N/A',
-        orderType: order.order_number?.startsWith('9') ? 'online' : order.order_number?.startsWith('1') ? 'instore' : 'unknown',
-        items: (order.order_lines || []).map(line => ({
-          description: line.item?.description || 'N/A',
-          quantity: line.original_quantity || 0,
-        })),
-      }))
+      const optimizedOrders = uniqueOrders.map(order => {
+        const base = {
+          orderNumber: order.order_number || 'N/A',
+          orderDate: order.placed_date || 'N/A',
+          total: order.summary?.grand_total || 'N/A',
+          orderType: order.order_number?.startsWith('9') ? 'online' : order.order_number?.startsWith('1') ? 'instore' : 'unknown',
+          items: (order.order_lines || []).map(line => ({
+            description: line.item?.description || 'N/A',
+            quantity: line.original_quantity || 0,
+          })),
+        }
+
+        // When available, attach the itemized receipt with per-line pricing +
+        // tax - the detail needed to build category splits that reconcile to
+        // the charged total.
+        const detail = order.receipt_detail
+        if (!detail) return base
+
+        const lineItems = (detail.packages || []).flatMap(pkg =>
+          (pkg.order_lines || []).map(line => ({
+            description: decodeHtmlEntities(line.item?.description || 'N/A'),
+            unitPrice: line.item?.unit_price ?? 'N/A',
+            quantity: line.quantity ?? 0,
+            productType: line.item?.product_classification?.product_type_name,
+            productSubtype: line.item?.product_classification?.product_subtype_name,
+            merchandiseType: line.item?.product_classification?.merchandise_type_name,
+          }))
+        )
+
+        return {
+          ...base,
+          receipt: {
+            storeId: detail.store_id,
+            subtotal: detail.summary?.total_product_price,
+            tax: detail.summary?.total_taxes,
+            adjustments: detail.summary?.total_adjustments,
+            grandTotal: detail.summary?.grand_total,
+            redcardDiscount: detail.summary?.saved_redcard_discount,
+            circleDiscount: detail.summary?.saved_cartwheel_discount,
+            payments: (detail.payments || []).map(p => ({
+              type: p.guest_display_payment_type || p.payment_type,
+              cardNumber: p.card_number,
+              amount: p.amount,
+            })),
+            lineItems,
+          },
+        }
+      })
 
       return {
         content: [

@@ -1,6 +1,6 @@
 import { Page } from 'puppeteer'
 import { createTargetBrowserAndPage, throwIfNotLoggedIn } from './target-utils.js'
-import { getTargetBaseUrl } from './target-config.js'
+import { getTargetBaseUrl, TARGET_API_KEY } from './target-config.js'
 
 /**
  * Target order structure from API
@@ -37,6 +37,54 @@ export interface TargetOrder {
       }
     }
   }>
+  /**
+   * Full itemized receipt, populated only when item details are requested.
+   * Comes from the post_orders/v1/orders/{id}/store endpoint.
+   */
+  receipt_detail?: TargetReceiptDetail
+}
+
+/**
+ * Itemized store-receipt detail from post_orders/v1/orders/{id}/store.
+ * This is the per-line pricing + tax breakdown needed to build category
+ * splits that reconcile to the charged total. All fields optional - the API
+ * may return partial data.
+ */
+export interface TargetReceiptDetail {
+  store_receipt_id?: string
+  store_id?: string
+  order_date?: string
+  summary?: {
+    total_product_price?: number
+    total_taxes?: number
+    total_adjustments?: number
+    grand_total?: number
+    saved_redcard_discount?: string
+    saved_cartwheel_discount?: string
+  }
+  payments?: Array<{
+    amount?: number
+    card_number?: string
+    payment_type?: string
+    guest_display_payment_type?: string
+  }>
+  packages?: Array<{
+    order_lines?: Array<{
+      quantity?: number
+      item?: {
+        tcin?: string
+        dpci?: string
+        description?: string
+        unit_price?: string
+        list_price?: string
+        product_classification?: {
+          product_type_name?: string
+          product_subtype_name?: string
+          merchandise_type_name?: string
+        }
+      }
+    }>
+  }>
 }
 
 /**
@@ -54,10 +102,55 @@ interface TargetOrdersResponse {
 }
 
 /**
- * Get order history from Target by intercepting API calls
- * Captures ALL order types (online and instore) from a single page load
+ * Fetch the full itemized receipt for a single store order.
+ *
+ * Runs the request from inside the already-authenticated target.com page
+ * context (via page.evaluate) so it reuses the session cookies. The endpoint
+ * requires the public web API key. Returns undefined on any failure so a
+ * single bad receipt never aborts the whole run.
  */
-export async function getTargetOrdersHistory(page?: number, filterType?: 'online' | 'instore'): Promise<{
+async function fetchStoreReceiptDetail(
+  puppeteerPage: Page,
+  receiptId: string
+): Promise<TargetReceiptDetail | undefined> {
+  try {
+    const detail = await puppeteerPage.evaluate(
+      async (id: string, key: string) => {
+        const res = await fetch(
+          `https://api.target.com/post_orders/v1/orders/${id}/store?key=${key}`,
+          { credentials: 'include', headers: { accept: 'application/json' } }
+        )
+        if (!res.ok) return { __error: res.status }
+        return res.json()
+      },
+      receiptId,
+      TARGET_API_KEY
+    )
+
+    if (detail && (detail as any).__error) {
+      console.error(`[WARN] Receipt detail for ${receiptId} returned HTTP ${(detail as any).__error}`)
+      return undefined
+    }
+    return detail as TargetReceiptDetail
+  } catch (error: any) {
+    console.error(`[WARN] Failed to fetch receipt detail for ${receiptId}: ${error?.message || error}`)
+    return undefined
+  }
+}
+
+/**
+ * Get order history from Target by intercepting API calls
+ * Captures ALL order types (online and instore) from a single page load.
+ *
+ * When fetchDetails is true, each returned order is additionally enriched with
+ * its full itemized receipt (per-line prices + tax), fetched from within the
+ * same authenticated page session.
+ */
+export async function getTargetOrdersHistory(
+  page?: number,
+  filterType?: 'online' | 'instore',
+  fetchDetails: boolean = false
+): Promise<{
   orders: TargetOrder[]
   totalOrders: number
   totalPages: number
@@ -142,6 +235,20 @@ export async function getTargetOrdersHistory(page?: number, filterType?: 'online
       }
     }
 
+    // Optionally enrich each order with its full itemized receipt. Done here,
+    // while the authenticated page is still open, so the in-page fetch reuses
+    // the session cookies. Sequential to stay gentle on Target's API.
+    if (fetchDetails) {
+      console.error(`[INFO] Fetching itemized receipt details for ${allOrders.length} orders...`)
+      for (const order of allOrders) {
+        if (!order.order_number) continue
+        const detail = await fetchStoreReceiptDetail(puppeteerPage, order.order_number)
+        if (detail) order.receipt_detail = detail
+        // Small delay between receipt fetches to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 300))
+      }
+    }
+
     return {
       orders: allOrders,
       totalOrders,
@@ -158,20 +265,23 @@ export async function getTargetOrdersHistory(page?: number, filterType?: 'online
  * Get all orders across all pages
  * Since we capture all order types in one page load, we just filter the results
  */
-export async function getAllTargetOrders(orderType: 'online' | 'instore' | 'both' = 'both'): Promise<TargetOrder[]> {
-  console.error(`[INFO] Fetching Target orders (type: ${orderType})...`)
-  
+export async function getAllTargetOrders(
+  orderType: 'online' | 'instore' | 'both' = 'both',
+  fetchDetails: boolean = false
+): Promise<TargetOrder[]> {
+  console.error(`[INFO] Fetching Target orders (type: ${orderType}${fetchDetails ? ', with item details' : ''})...`)
+
   const filterType = orderType === 'both' ? undefined : orderType
-  
-  const firstPage = await getTargetOrdersHistory(1, filterType)
+
+  const firstPage = await getTargetOrdersHistory(1, filterType, fetchDetails)
   const allOrders: TargetOrder[] = [...firstPage.orders]
-  
+
   console.error(`[INFO] Found ${firstPage.totalPages} pages with ${firstPage.totalOrders} total orders`)
 
   // Fetch remaining pages if needed
   for (let page = 2; page <= firstPage.totalPages; page++) {
     console.error(`[INFO] Fetching page ${page}/${firstPage.totalPages}...`)
-    const pageData = await getTargetOrdersHistory(page, filterType)
+    const pageData = await getTargetOrdersHistory(page, filterType, fetchDetails)
     allOrders.push(...pageData.orders)
   }
 
