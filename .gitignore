@@ -223,3 +223,5 @@ targetCookies.json
 
 mocks/*_202*.html
 mocks/*_202*.txt
+# Local categorization working files (personal financial data)
+.categorization-work/
