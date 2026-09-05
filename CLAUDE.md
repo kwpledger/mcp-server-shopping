@@ -1,87 +1,123 @@
-# CLAUDE.md
+# Shopping MCP Server (Amazon · Target · Walmart)
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Pulls itemized order and receipt data out of Amazon, Target and Walmart so it can be turned into
+category splits that reconcile to what the bank actually charged. The point is not shopping — it is
+feeding the transaction backlog in the sibling project, `kwpledger/quicken-simplifi-mcp`.
 
-## Overview
+**Two things live here, and they are not the same thing.** The Node MCP server under `src/` drives
+Puppeteer with exported cookies and is what upstream forked from. The *retail extraction work* that
+matters right now runs in **Claude in Chrome**, against Kevin's own logged-in session, using the
+contracts documented in `docs/`. A session asked to "get the Walmart orders" should read
+`docs/CHROME-SESSION-PLAYBOOK.md` and use the browser — not build against `src/`.
 
-This is an Amazon MCP (Model Context Protocol) Server that enables AI assistants to interact with Amazon services through web scraping. The server uses Puppeteer for browser automation and exposes Amazon functionality through MCP tools.
+---
 
-## Development Commands
+## The goal that defines "done"
 
-```bash
-# Install dependencies (use -D flag for Puppeteer)
-npm install -D
+This repo is in service of the Simplifi goal, restated here so a session does not have to go
+looking for it:
 
-# Build TypeScript to JavaScript
-npm run build
+> All unreviewed Simplifi transactions from **May 17, 2025 through July 16, 2026**, categorized —
+> or **September 30, 2026**, whichever comes first.
 
-# Clean mock HTML files
-npm run clean
+Amazon + Walmart + Target are **302 of the 1,126 unreviewed transactions (27%)** and carry nearly
+all of the split work. That is why this repo exists and why its scope is narrow.
+
+Scope test for anything proposed here: *does it move unreviewed transactions through the pipe
+before Sept 30?* If not, it waits. When a session could either improve tooling or extract another
+month of orders, extract the orders and say so.
+
+## Layout
+
+```
+src/                       Node MCP server (stdio), Puppeteer + Cheerio
+  index.ts                 Tool definitions; Target receipt flattening
+  amazon.*.test.ts         Amazon tests; hit live ASINs
+  cart.ts products.ts orders.ts utils.ts      Amazon paths
+  target-config.ts         Target cookies + the public web API key
+  target-orders.ts         Order history + itemized receipt fetch
+  target-utils.ts          Target Puppeteer helpers
+docs/                      Extraction contracts — read these before scraping anything
+mocks/                     Saved HTML for USE_MOCK_RESPONSES=true
+LLM/                       Upstream's original session transcripts. Historical; not current.
 ```
 
-## Architecture
+`amazonCookies.json` and `targetCookies.json` are gitignored and must stay that way.
 
-### Core Components
+## Read before you act
 
-- **MCP Server** (`src/index.ts`): Defines and exposes tools via the MCP protocol
-- **Amazon Scraper** (`src/amazon.ts`): Contains all Amazon interaction logic using Puppeteer and Cheerio
-- **Configuration** (`src/config.ts`): Manages server settings and paths
-- **Browser Utils** (`src/utils.ts`): Helper functions for Puppeteer browser automation
+- **Extracting Walmart orders** → `docs/WALMART-EXTRACTION.md`. Walmart server-renders everything
+  into `__NEXT_DATA__`; there is no API call to intercept and the field names contain two traps
+  that will silently corrupt every total.
+- **Extracting Target orders** → `docs/TARGET-EXTRACTION.md`. Different mechanism entirely — a real
+  API, a public key, one extra request per order.
+- **Running the actual work in a browser** → `docs/CHROME-SESSION-PLAYBOOK.md`. Start here if you
+  have been asked to produce splits rather than to change code.
+- **Deciding what category something is** → `docs/CONVENTIONS.md` in `quicken-simplifi-mcp`, not
+  here. Those rulings are settled and this repo does not restate them. This repo answers *what was
+  bought and for how much*; that repo answers *what bucket it goes in*.
 
-### Key Dependencies
+## Design decisions
 
-- `@modelcontextprotocol/sdk`: MCP framework
-- `puppeteer`: Browser automation
-- `cheerio`: HTML parsing
-- `zod`: Schema validation
+**Walmart is read from the page, not from an API — because there is no API to read.** The order
+details page is server-rendered React; the whole order sits in a `__NEXT_DATA__` script tag in the
+initial HTML. Filtering DevTools' Network tab for `graphql` on an order page returns nothing,
+which is the correct result and not a failed search. This is *better* than Target's shape: one
+authenticated page load gets items, prices, fees, tax, tip and totals together, with no second
+request and no API key.
 
-### Authentication
+*Rejected:* scraping the print-invoice DOM. The print view is richer than the on-page summary — it
+names CRV where the page says "Estimated regulatory fees & taxes" — but that same breakdown is
+already in `__NEXT_DATA__` under `rowInfo.chargeBreakdown`, so the DOM buys nothing and costs a
+dependency on rendered markup. Note also that `div.od-print-view` is empty until print fires.
 
-The server requires Amazon cookies for authentication:
-1. Export cookies from browser using a cookie export extension
-2. Save to `amazonCookies.json` in project root
-3. Format: Array of cookie objects with standard properties
+**Tip handling differs by retailer, and the retailer's own words are not evidence.** Walmart's
+invoice says the driver tip is "charged separately after delivery." It is not; it rides inside the
+single charge. Target's Shipt tips genuinely are separate. Both use near-identical language, so
+this has to be per-retailer configuration, never inferred from the page. Reconcile against the bank
+transaction, never against the retailer's description of the bank transaction.
 
-## Important Implementation Details
+**Scrape an order only after its bank transaction clears.** Walmart revises orders after pickup or
+delivery — substitutions, out-of-stocks, and weight-priced items all move. An order read while its
+transaction is still `Pending` produces numbers that will not match what posts. This is the same
+rule as Simplifi's "nothing gets marked reviewed until it clears," arrived at from the other end.
 
-### Browser Automation
-- Uses headless Chrome with specific flags to avoid detection
-- Implements user agent spoofing
-- Handles Amazon's anti-bot measures
+**Amazon and Target hard-failed the server on a missing cookie file; they no longer do.**
+`loadAmazonCookiesFile()` used to throw at startup, which killed the Target tools too even though
+they need no Amazon credentials. Both loaders now warn and return `[]`, and the per-retailer tools
+surface an auth error when they are actually called. That made Target-only operation possible and
+is the substance of the open upstream PR.
 
-### Error Handling
-- Detects login page redirects and throws authentication errors
-- Implements retry logic for network failures
-- Provides detailed error messages for debugging
+## Current state
 
-### Mock Mode
-- Set `USE_MOCK_RESPONSES=true` in environment to use mock HTML files
-- Mock files stored in `mock/` directory
-- Useful for development and testing without hitting Amazon
+**The Walmart contract is verified; the Walmart tooling does not exist.** `docs/WALMART-EXTRACTION.md`
+was validated on 2026-09-05 against one saved order page, end to end — line items sum to subtotal,
+subtotal plus fees plus tax plus tip equals the posted charge. There is no Walmart code in `src/`
+and none is planned before Sept 30. Extraction runs in Claude in Chrome.
 
-### Logging
-- Server logs to `~/Library/Logs/Claude/mcp-server-shopping.log` (Mac) or `%APPDATA%\Claude\logs\mcp-server-shopping.log` (Windows)
-- Check logs for debugging authentication or scraping issues
+**Target's itemized receipts work and are unverified against a live account by anyone but Kevin.**
+`includeItemDetails` on `get-target-orders-history` fetches one receipt per order. It is slower by
+design — sequential, 300 ms apart — because Target's rate limit is unknown.
 
-## MCP Tools Exposed
+**Amazon is upstream's original scraping code and is untouched.** It parses HTML, its tests hit
+live ASINs, and it is the most fragile path here. Amazon order history is available in the browser,
+so Chrome is the better route for backlog work regardless.
 
-1. `search-products`: Search Amazon catalog
-2. `get-product-details`: Get detailed product information
-3. `get-orders-history`: View past orders
-4. `get-cart-content`: View current cart
-5. `add-to-cart`: Add items to cart
-6. `clear-cart`: Remove all items from cart
-7. `perform-purchase`: Complete purchase (mock mode only)
+**There is no test suite for Target or Walmart**, no CI, and no deployment. The Amazon tests are
+upstream's and require live network plus valid cookies.
 
-## Testing Approach
+**An upstream PR is open from `main`** to `sachinparyani/mcp-server-shopping`, covering Target-only
+startup and itemized receipts. **Anything merged into `main` joins that open PR.** Keep repo-local
+work — these docs included — on a branch until Kevin decides otherwise.
 
-No formal test suite exists. Testing is done through:
-- Manual testing with Claude Desktop
-- Mock mode for development
-- Log analysis for debugging
+## Conventions
 
-## Common Issues
-
-1. **Authentication failures**: Update cookies from browser
-2. **Scraping failures**: Amazon HTML structure may have changed
-3. **Rate limiting**: Add delays between requests if needed
+- **Keep this file under 1,850 words; start pruning at 1,350.** Anything a session will not need in
+  its first four minutes belongs in `docs/`, with a pointer here saying when to go read it.
+- **Verify a selector or a field path against real data before writing it down**, and stamp the
+  doc with the date you verified it. Every guessed selector in the sibling project was wrong.
+- **Record what a field actually means, not what it is named.** `grandTotal`, `preDiscountedLinePrice`
+  and "charged separately after delivery" are all misleading, and each one was found the hard way.
+- Keep cookies, session tokens and full account numbers out of this repo. Payee names, category
+  names and order numbers are fine. **Never commit a HAR file** — it embeds live session
+  credentials.
