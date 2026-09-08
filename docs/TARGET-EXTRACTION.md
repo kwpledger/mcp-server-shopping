@@ -109,3 +109,22 @@ This asymmetry is why per-retailer tip behavior has to be explicit configuration
 - **`post_orders/.../store` is a store-receipt endpoint.** Whether online-only orders return
   anything useful from it is untested.
 - **No tests.** Nothing in `src/*.test.ts` covers Target.
+
+## Why this doc is kept
+
+**Ruled 2026-09-08.** Neither this file nor `TARGET-INTEGRATION-SUMMARY.md` is deleted, even though
+Target extraction is not on the path to the September 30 goal and nothing currently calls it.
+
+The SMART goal covers **May 23, 2025 – July 16, 2026** only. Kevin has been categorizing
+transactions after that window by hand, deliberately, to keep the goal's scope from creeping. That
+makes Target tooling idle right now — but idle is not dead. If splitting gets away from him again
+over some later span, this is the capability that gets revived, and the mechanism here was hard-won:
+the API interception, the public key, the two-endpoint shape, and the tip asymmetry against Walmart
+all cost real time to establish and none of it is discoverable by looking at the code.
+
+So a session that finds this doc unreferenced should leave it alone. "Nothing links to it" is the
+expected state, not evidence it is stale.
+
+The one thing that would make it *usable* on that future day is the missing reconciliation check in
+**Known gaps** above. Establish it on the first live run of the next span, before trusting a single
+split — not after.
