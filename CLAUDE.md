@@ -106,9 +106,12 @@ so Chrome is the better route for backlog work regardless.
 **There is no test suite for Target or Walmart**, no CI, and no deployment. The Amazon tests are
 upstream's and require live network plus valid cookies.
 
-**An upstream PR is open from `main`** to `sachinparyani/mcp-server-shopping`, covering Target-only
-startup and itemized receipts. **Anything merged into `main` joins that open PR.** Keep repo-local
-work — these docs included — on a branch until Kevin decides otherwise.
+**The upstream PR to `sachinparyani/mcp-server-shopping` was closed unmerged on 2026-09-08**, three
+days after it was opened, with no response from upstream. It covered Target-only startup and
+itemized receipts, and that work lives on `main` regardless. So `main` no longer feeds an open
+upstream PR and repo-local work can land there freely. **If a new upstream PR is ever opened from
+`main`, the constraint returns:** anything on `main` joins it, and these docs reference a sibling
+private repo and Kevin's own backlog, neither of which belongs upstream. Branch first in that case.
 
 ## Conventions
 
