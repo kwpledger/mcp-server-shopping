@@ -100,15 +100,44 @@ This asymmetry is why per-retailer tip behavior has to be explicit configuration
 
 ## Known gaps
 
-- **No reconciliation check has been recorded.** Walmart's line-items-sum-to-subtotal identity was
-  proven; the equivalent for Target has not been written down. Do it on the next live run and record
-  it here — whether `unit_price` is per-unit or extended when `quantity > 1` is exactly the kind of
-  thing that silently breaks a split.
+- **No reconciliation check has been recorded.** See the checklist below, which is the whole of what
+  is missing before Target splits can be trusted.
 - **Receipts carry a masked `card_number`.** Harmless, but worth knowing before piping a payload
   into a chat context.
 - **`post_orders/.../store` is a store-receipt endpoint.** Whether online-only orders return
   anything useful from it is untested.
 - **No tests.** Nothing in `src/*.test.ts` covers Target.
+
+## The reconciliation check, ported from Walmart
+
+**Written 2026-09-08. Not yet run — every line below is a question, not a finding.**
+
+The reason this was never done is worth stating, because it is not the obvious one. The response
+*structure* has been known since the integration was written; `TargetReceiptDetail` types every
+field. What was missing was a sharp idea of *which identities to test* and *what a lying field name
+looks like*. Walmart supplied both. Run this on the first live order of any future span, against an
+order whose bank charge you can see, before trusting a single split.
+
+**The two identities.** Both must hold exactly:
+
+```
+Sigma (line prices)                        == summary.total_product_price
+total_product_price +/- adjustments + tax  == summary.grand_total == the posted charge
+```
+
+**The six questions, each a Walmart trap with a Target analogue:**
+
+| # | Question | Why — the Walmart precedent |
+|---|---|---|
+| 1 | Is `unit_price` per-unit or already extended? | **Highest value.** Walmart's equivalently-positioned field is `linePrice` and is *extended*. Target's is *named* `unit_price`. If it is genuinely per-unit the sum is `Sigma (unit_price x quantity)`; port Walmart's logic unchanged and every `quantity > 1` line is undercounted. Test on an order with a qty-2 item. |
+| 2 | Does `summary.grand_total` include the Shipt tip? | Walmart ships `grandTotal` (no tip) and `grandTotalWithTips` (the bank charge), both labelled "Total". Target has only `grand_total`. Since Shipt tips post separately, it most likely excludes the tip — so a Target order reconciles to one charge and the tip to a second. Confirm rather than assume. |
+| 3 | What is actually inside `total_adjustments`? | Walmart hid CRV inside "Estimated regulatory fees & taxes" and only a `labelType` gave it away. `total_adjustments` is an unexplained bucket. Check in particular whether it double-counts `saved_redcard_discount` / `saved_cartwheel_discount`. |
+| 4 | Is `list_price` a trap, and does it matter that it is dropped? | Walmart's `preDiscountedLinePrice` turned out to be a *different weight*, not a discount. Target's `list_price` is in the interface but `src/index.ts` never copies it into `lineItems`, so no caller can see it either way. Decide whether it is signal before restoring it. |
+| 5 | Do multi-package orders repeat lines? | Walmart's item array appears twice in `__NEXT_DATA__` and must be deduped on `usItemId`. `packages[]` is an array here and `index.ts` flatMaps it blindly. If lines repeat, dedupe on `tcin`. |
+| 6 | Are the money fields consistently typed? | They are not. `summary.*` are `number`; `unit_price` and `list_price` are `string`, and `index.ts` passes `unitPrice` straight through unparsed. `saved_redcard_discount` is also a string. Anything summing these has to parse first. |
+
+Record the answers here with the date, the same way `WALMART-EXTRACTION.md` records its verified
+order. One order settles all six.
 
 ## Why this doc is kept
 
