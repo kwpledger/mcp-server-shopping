@@ -1,6 +1,7 @@
 # Shopping MCP Server (Amazon · Target · Walmart)
 
 > **Note:** `CLAUDE.md` is a symlink to this file (`AGENTS.md`). One file, two names — edit either path, you are editing this file. Don't replace the symlink with a second copy.
+
 Pulls itemized order and receipt data out of Amazon, Target and Walmart so it can be turned into
 category splits that reconcile to what the bank actually charged. The point is not shopping — it is
 feeding the transaction backlog in the sibling project, `kwpledger/quicken-simplifi-mcp`.
