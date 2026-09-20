@@ -117,8 +117,15 @@ private repo and Kevin's own backlog, neither of which belongs upstream. Branch 
 
 ## Conventions
 
-- **Keep this file under 1,850 words; start pruning at 1,350.** Anything a session will not need in
-  its first four minutes belongs in `docs/`, with a pointer here saying when to go read it.
+- **Four rules govern this file's length** (Kevin, 2026-09-20), the same in every repo of his that
+  has one. **(1) Soft limit 1,350 words** — past it, weigh each addition, and look for what can be
+  cut safely or preserved by moving it to a `docs/` reference. **(2) Hard limit 1,850** — past it,
+  cut or move *now*, not later. **(3) The four-minute rule is _a_ primary decider**, not the only
+  one: if a session will not need it in the first four minutes after handoff, it is a high-tier
+  candidate for preservation by move, with a pointer here saying when to go read it. **(4) No
+  `docs/` file carries a word limit** — reference, not handoff, so moving costs nothing. A
+  PostToolUse hook measures this file on every write (`.claude/hooks/agents-md-length.mjs`); it
+  reports but cannot block.
 - **Verify a selector or a field path against real data before writing it down**, and stamp the
   doc with the date you verified it. Every guessed selector in the sibling project was wrong.
 - **Record what a field actually means, not what it is named.** `grandTotal`, `preDiscountedLinePrice`
