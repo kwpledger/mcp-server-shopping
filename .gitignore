@@ -225,3 +225,6 @@ mocks/*_202*.html
 mocks/*_202*.txt
 # Local categorization working files (personal financial data)
 .categorization-work/
+
+# Claude Code: settings.json and rules/ are shared and committed; this one is per-machine.
+.claude/settings.local.json

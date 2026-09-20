@@ -1,0 +1,17 @@
+{
+  "_comment": "Measures AGENTS.md (and writes through the CLAUDE.md symlink) against this repo's word limits on every edit. The limit was prose here and in four sibling repos and enforced in none; runbox-mcp's reached 2,621 words against an 1,850 ceiling before this existed. The hook only reports \u2014 PostToolUse runs after the write, so it cannot block one. Thresholds are passed as flags because the repos do not agree on them. See .claude/hooks/agents-md-length.mjs.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/agents-md-length.mjs\" --warn 1350 --ceiling 1850",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
