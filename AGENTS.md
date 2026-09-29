@@ -4,7 +4,7 @@
 
 Pulls itemized order and receipt data out of Amazon, Target and Walmart so it can be turned into
 category splits that reconcile to what the bank actually charged. The point is not shopping — it is
-feeding the transaction backlog in the sibling project, `kwpledger/quicken-simplifi-mcp`.
+feeding the transaction backlog in the sibling project, `kwpledger/quicken-simplifi-semiautomation`.
 
 **Two things live here, and they are not the same thing.** The Node MCP server under `src/` drives
 Puppeteer with exported cookies and is what upstream forked from. The *retail extraction work* that
@@ -55,8 +55,8 @@ LLM/                       Upstream's original session transcripts. Historical; 
   API, a public key, one extra request per order.
 - **Running the actual work in a browser** → `docs/CHROME-SESSION-PLAYBOOK.md`. Start here if you
   have been asked to produce splits rather than to change code.
-- **Deciding what category something is** → `docs/CONVENTIONS.md` in `quicken-simplifi-mcp`, not
-  here. Those rulings are settled and this repo does not restate them. This repo answers *what was
+- **Deciding what category something is** → `docs/CONVENTIONS.md` in
+  `quicken-simplifi-semiautomation`, not here. Those rulings are settled and this repo does not restate them. This repo answers *what was
   bought and for how much*; that repo answers *what bucket it goes in*.
 
 ## Design decisions

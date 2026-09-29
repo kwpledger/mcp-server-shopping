@@ -155,7 +155,7 @@ Walmart revises an order after pickup or delivery — substitutions, out-of-stoc
 what posts.** Either wait for `Cleared`, or mark the extraction provisional and re-read later.
 
 This lines up with the sibling project's standing rule that nothing is marked reviewed until it
-clears (`quicken-simplifi-mcp/docs/CONVENTIONS.md`).
+clears (`quicken-simplifi-semiautomation/docs/CONVENTIONS.md`).
 
 ## Gotchas that cost time
 
