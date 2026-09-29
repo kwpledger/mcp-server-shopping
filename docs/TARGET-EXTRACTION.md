@@ -70,7 +70,7 @@ packages  → [ order_lines → [ quantity,
 
 **`product_classification` is Target's own taxonomy**, not Simplifi's. It is a useful *hint* for
 categorization and never an answer — the mapping decision belongs to
-`quicken-simplifi-mcp/docs/CONVENTIONS.md`.
+`quicken-simplifi-semiautomation/docs/CONVENTIONS.md`.
 
 **Descriptions contain HTML entities.** `L&#39;Oreal` arrives raw; `decodeHtmlEntities()` in
 `src/index.ts` handles the numeric, hex and named forms.

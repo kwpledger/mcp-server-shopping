@@ -66,8 +66,8 @@ twice (dedupe on `usItemId`) or `grandTotal` used in place of `grandTotalWithTip
 ## The rulings that change your output
 
 Summarized here because you may not have the Simplifi repo in front of you.
-**`quicken-simplifi-mcp/docs/CONVENTIONS.md` is authoritative** — if this section and that file
-disagree, that file wins and this one is stale.
+**`quicken-simplifi-semiautomation/docs/CONVENTIONS.md` is authoritative** — if this section and
+that file disagree, that file wins and this one is stale.
 
 - **A one-category order does not get split at all.** If everything lands in a single category
   besides sales tax, assign the **whole amount** to that category and emit one row. Do not break out
